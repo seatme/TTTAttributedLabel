@@ -28,21 +28,36 @@ NSString * const kTTTStrikeOutAttributeName = @"TTTStrikeOutAttribute";
 
 static inline CTTextAlignment CTTextAlignmentFromUITextAlignment(UITextAlignment alignment) {
 	switch (alignment) {
-		case UITextAlignmentLeft: return kCTLeftTextAlignment;
-		case UITextAlignmentCenter: return kCTCenterTextAlignment;
-		case UITextAlignmentRight: return kCTRightTextAlignment;
-		default: return kCTNaturalTextAlignment;
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+        case NSTextAlignmentLeft: return kCTLeftTextAlignment;
+        case NSTextAlignmentCenter: return kCTCenterTextAlignment;
+        case NSTextAlignmentRight: return kCTRightTextAlignment;
+#else
+        case UITextAlignmentLeft: return kCTLeftTextAlignment;
+        case UITextAlignmentCenter: return kCTCenterTextAlignment;
+        case UITextAlignmentRight: return kCTRightTextAlignment;
+#endif
+        default: return kCTNaturalTextAlignment;
 	}
 }
 
 static inline CTLineBreakMode CTLineBreakModeFromUILineBreakMode(UILineBreakMode lineBreakMode) {
 	switch (lineBreakMode) {
-		case UILineBreakModeWordWrap: return kCTLineBreakByWordWrapping;
-		case UILineBreakModeCharacterWrap: return kCTLineBreakByCharWrapping;
-		case UILineBreakModeClip: return kCTLineBreakByClipping;
-		case UILineBreakModeHeadTruncation: return kCTLineBreakByTruncatingHead;
-		case UILineBreakModeTailTruncation: return kCTLineBreakByTruncatingTail;
-		case UILineBreakModeMiddleTruncation: return kCTLineBreakByTruncatingMiddle;
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+        case NSLineBreakByWordWrapping: return kCTLineBreakByWordWrapping;
+        case NSLineBreakByCharWrapping: return kCTLineBreakByCharWrapping;
+        case NSLineBreakByClipping: return kCTLineBreakByClipping;
+        case NSLineBreakByTruncatingHead: return kCTLineBreakByTruncatingHead;
+        case NSLineBreakByTruncatingTail: return kCTLineBreakByTruncatingTail;
+        case NSLineBreakByTruncatingMiddle: return kCTLineBreakByTruncatingMiddle;
+#else
+        case UILineBreakModeWordWrap: return kCTLineBreakByWordWrapping;
+        case UILineBreakModeCharacterWrap: return kCTLineBreakByCharWrapping;
+        case UILineBreakModeClip: return kCTLineBreakByClipping;
+        case UILineBreakModeHeadTruncation: return kCTLineBreakByTruncatingHead;
+        case UILineBreakModeTailTruncation: return kCTLineBreakByTruncatingTail;
+        case UILineBreakModeMiddleTruncation: return kCTLineBreakByTruncatingMiddle;
+#endif
 		default: return 0;
 	}
 }
@@ -88,7 +103,11 @@ static inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributed
 
     CTLineBreakMode lineBreakMode;
     if (label.numberOfLines != 1) {
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+        lineBreakMode = CTLineBreakModeFromUILineBreakMode(NSLineBreakByWordWrapping);
+#else
         lineBreakMode = CTLineBreakModeFromUILineBreakMode(UILineBreakModeWordWrap);
+#endif
     }
     else {
         lineBreakMode = CTLineBreakModeFromUILineBreakMode(label.lineBreakMode);
@@ -113,13 +132,19 @@ static inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributed
     return [NSDictionary dictionaryWithDictionary:mutableAttributes];
 }
 
-static inline NSAttributedString * NSAttributedStringByScalingFontSize(NSAttributedString *attributedString, CGFloat scale, CGFloat minimumFontSize) {    
+static inline NSAttributedString * NSAttributedStringByScalingFontSize(NSAttributedString *attributedString, CGFloat scale, CGFloat minimumFontScale) {
     NSMutableAttributedString *mutableAttributedString = [attributedString mutableCopy];
     [mutableAttributedString enumerateAttribute:(NSString *)kCTFontAttributeName inRange:NSMakeRange(0, [mutableAttributedString length]) options:0 usingBlock:^(id value, NSRange range, BOOL *stop) {
         CTFontRef font = (__bridge CTFontRef)value;
         if (font) {
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+            CGFloat scaledFontSize = floorf(CTFontGetSize(font) * fmaxf(scale,minimumFontScale));
+            CTFontRef scaledFont = CTFontCreateCopyWithAttributes(font, scaledFontSize, NULL, NULL);
+#else
             CGFloat scaledFontSize = floorf(CTFontGetSize(font) * scale);
-            CTFontRef scaledFont = CTFontCreateCopyWithAttributes(font, fmaxf(scaledFontSize, minimumFontSize), NULL, NULL);
+            // minimumFontScale is assumed to be minimumFontSize in points on pre-iOS 6 builds
+            CTFontRef scaledFont = CTFontCreateCopyWithAttributes(font, fmaxf(scaledFontSize, minimumFontScale), NULL, NULL);
+#endif
             CFAttributedStringSetAttribute((__bridge CFMutableAttributedStringRef)mutableAttributedString, CFRangeMake(range.location, range.length), kCTFontAttributeName, scaledFont);
             CFRelease(scaledFont);
         }
@@ -400,7 +425,11 @@ static inline NSAttributedString * NSAttributedStringByScalingFontSize(NSAttribu
     
     CFArrayRef lines = CTFrameGetLines(frame);
     NSInteger numberOfLines = self.numberOfLines > 0 ? MIN(self.numberOfLines, CFArrayGetCount(lines)) : CFArrayGetCount(lines);
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+    BOOL truncateLastLine = (self.lineBreakMode == NSLineBreakByTruncatingHead || self.lineBreakMode == NSLineBreakByTruncatingMiddle || self.lineBreakMode == NSLineBreakByTruncatingTail);
+#else
     BOOL truncateLastLine = (self.lineBreakMode == UILineBreakModeHeadTruncation || self.lineBreakMode == UILineBreakModeMiddleTruncation || self.lineBreakMode == UILineBreakModeTailTruncation);
+#endif
 	
     CGPoint lineOrigins[numberOfLines];
     CTFrameGetLineOrigins(frame, CFRangeMake(0, numberOfLines), lineOrigins);
@@ -422,18 +451,35 @@ static inline NSAttributedString * NSAttributedStringByScalingFontSize(NSAttribu
                 
                 // Multiple lines, only use UILineBreakModeTailTruncation
                 if (numberOfLines != 1) {
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+                    lineBreakMode = NSLineBreakByTruncatingTail;
+#else
                     lineBreakMode = UILineBreakModeTailTruncation;
+#endif
                 }
                 
                 switch (lineBreakMode) {
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+                    case NSLineBreakByTruncatingHead:
+#else
                     case UILineBreakModeHeadTruncation:
+#endif
+
                         truncationType = kCTLineTruncationStart;
                         break;
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+                    case NSLineBreakByTruncatingMiddle:
+#else
                     case UILineBreakModeMiddleTruncation:
+#endif
                         truncationType = kCTLineTruncationMiddle;
                         truncationAttributePosition += (lastLineRange.length / 2);
                         break;
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+                    case NSLineBreakByTruncatingTail:
+#else
                     case UILineBreakModeTailTruncation:
+#endif
                     default:
                         truncationType = kCTLineTruncationEnd;
                         truncationAttributePosition += (lastLineRange.length - 1);
@@ -652,13 +698,21 @@ static inline NSAttributedString * NSAttributedStringByScalingFontSize(NSAttribu
     if (self.adjustsFontSizeToFitWidth && self.numberOfLines > 0) {
         CGFloat textWidth = [self sizeThatFits:CGSizeZero].width;
         CGFloat availableWidth = self.frame.size.width * self.numberOfLines;
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+        if (self.numberOfLines > 1 && self.lineBreakMode == NSLineBreakByWordWrapping) {
+#else
         if (self.numberOfLines > 1 && self.lineBreakMode == UILineBreakModeWordWrap) {
+#endif
             textWidth *= kTTTLineBreakWordWrapTextWidthScalingFactor;
         }
         
         if (textWidth > availableWidth && textWidth > 0.0f) {
             originalAttributedText = [self.attributedText copy];
+#if (__IPHONE_OS_VERSION_MIN_REQUIRED >= 60000)
+            self.text = NSAttributedStringByScalingFontSize(self.attributedText, availableWidth / textWidth, self.minimumScaleFactor);
+#else
             self.text = NSAttributedStringByScalingFontSize(self.attributedText, availableWidth / textWidth, self.minimumFontSize);
+#endif
         }
     }
     
